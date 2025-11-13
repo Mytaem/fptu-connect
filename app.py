@@ -1,4 +1,3 @@
-# app.py - FPTU Connect Web App
 from fastapi import FastAPI, Request, Form, File, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -15,7 +14,6 @@ app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-# Tạo thư mục
 os.makedirs("static/uploads", exist_ok=True)
 os.makedirs("data", exist_ok=True)
 
@@ -62,7 +60,7 @@ async def add_student(
                 pass
 
     network.sn.add_student(sid, name, avatar_path)
-    network.generate_graph()  # Cập nhật đồ thị
+    network.generate_graph()
     return RedirectResponse(f"/student/{sid}", status_code=303)
 
 @app.get("/path", response_class=HTMLResponse)
@@ -85,7 +83,3 @@ async def leaderboard(request: Request):
         "request": request,
         "top_students": top_students
     })
-
-# Tạo đồ thị lần đầu nếu chưa có
-if not os.path.exists("static/graph.html"):
-    network.generate_graph()
