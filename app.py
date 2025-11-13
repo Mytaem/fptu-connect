@@ -1,120 +1,94 @@
-# app.py - FPTU CONNECT 3.0
+# app.py - FPTU Connect Web App
 from fastapi import FastAPI, Request, Form, File, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from PIL import Image
-import network, os, uuid, shutil
+import network  # <-- Đảm bảo import này
 from src.src_w2.net_stats_w2 import compute_stats
-from src.src_w4.suggest_w4 import suggest_friends
 from src.src_w3.path_w3 import shortest_path
 from src.src_w4.topk_w4 import topk_by_degree
+import os
+from PIL import Image
+import uuid
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
-UPLOAD_DIR = "static/uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# Danh sách bài viết (tạm)
-posts = []
+# Tạo thư mục uploads nếu chưa có
+os.makedirs("static/uploads", exist_ok=True)
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     stats = compute_stats(network.sn)
-    return templates.TemplateResponse("index.html", {
-        "request": request, "stats": stats, "network": network, "posts": posts[-3:]
-    })
-
-@app.get("/login", response_class=HTMLResponse)
-async def login_form(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request})
+    return templates.TemplateResponse("index.html", {"request": request, "stats": stats})
 
 @app.get("/student/{sid}", response_class=HTMLResponse)
-async def student(request: Request, sid: str):
+async def student_profile(request: Request, sid: str):
     if sid not in network.sn.students:
-        return HTMLResponse("Không tìm thấy!", status_code=404)
-    info = network.sn.students[sid]
-    friends = list(network.sn.friends_of(sid))[:12]
-    suggestions = suggest_friends(network.sn, sid, top_n=6)
-    user_posts = [p for p in posts if p["user_id"] == sid]
+        return RedirectResponse("/")
+    student = network.sn.students[sid]
     return templates.TemplateResponse("profile.html", {
-        "request": request, "info": info, "friends": friends,
-        "sid": sid, "suggestions": suggestions, "network": network,
-        "posts": user_posts
+        "request": request,
+        "student": student,
+        "network": network
     })
 
 @app.get("/add", response_class=HTMLResponse)
-async def add_profile_form(request: Request):
-    return templates.TemplateResponse("add_profile.html", {"request": request})
+async def add_form(request: Request):
+    return templates.TemplateResponse("add.html", {"request": request})
 
 @app.post("/add")
-async def save_profile(
+async def add_student(
     request: Request,
-    id: str = Form(...), name: str = Form(...), faculty: str = Form(...),
-    hometown: str = Form(...), classes: str = Form(None), clubs: str = Form(None),
+    name: str = Form(...),
+    sid: str = Form(...),
     avatar: UploadFile = File(None)
 ):
-    classes = [c.strip() for c in (classes or "").split(",") if c.strip()]
-    clubs = [c.strip() for c in (clubs or "").split(",") if c.strip()]
-    
-    avatar_path = "default.jpg"
+    # Xử lý ảnh
+    avatar_path = "static/default.jpg"
     if avatar and avatar.filename:
-        ext = avatar.filename.split(".")[-1]
-        filename = f"{uuid.uuid4()}.{ext}"
-        path = os.path.join(UPLOAD_DIR, filename)
-        with open(path, "wb") as f:
-            shutil.copyfileobj(avatar.file, f)
-        avatar_path = f"uploads/{filename}"
-    
-    user_data = {
-        "id": id, "name": name, "faculty": faculty,
-        "hometown": hometown, "classes": classes, "clubs": clubs,
-        "avatar": avatar_path
-    }
-    network.sn.students[id] = user_data
-    
-    return templates.TemplateResponse("add_profile.html", {
-        "request": request, "msg": f"Đã tạo hồ sơ {name}!"
-    })
+        ext = os.path.splitext(avatar.filename)[1].lower()
+        if ext in [".jpg", ".jpeg", ".png"]:
+            filename = f"{uuid.uuid4()}{ext}"
+            avatar_path = f"static/uploads/{filename}"
+            with open(avatar_path, "wb") as f:
+                content = await avatar.read()
+                f.write(content)
+            # Resize ảnh
+            try:
+                img = Image.open(avatar_path)
+                img = img.resize((200, 200), Image.Resampling.LANCZOS)
+                img.save(avatar_path)
+            except:
+                pass
 
-@app.post("/post")
-async def create_post(
-    request: Request,
-    user_id: str = Form(...), content: str = Form(...),
-    image: UploadFile = File(None)
-):
-    image_path = None
-    if image and image.filename:
-        ext = image.filename.split(".")[-1]
-        filename = f"{uuid.uuid4()}.{ext}"
-        path = os.path.join(UPLOAD_DIR, filename)
-        with open(path, "wb") as f:
-            shutil.copyfileobj(image.file, f)
-        image_path = f"uploads/{filename}"
-    
-    posts.append({
-        "user_id": user_id,
-        "content": content,
-        "image": image_path,
-        "name": network.sn.students[user_id]["name"]
-    })
-    return RedirectResponse(f"/student/{user_id}", status_code=303)
-
-@app.get("/leaderboard", response_class=HTMLResponse)
-async def leaderboard(request: Request):
-    topk = topk_by_degree(network.sn, 20)
-    return templates.TemplateResponse("leaderboard.html", {
-        "request": request, "topk": topk, "network": network
-    })
+    # Thêm sinh viên
+    network.add_student(sid, name, avatar_path)
+    return RedirectResponse(f"/student/{sid}", status_code=303)
 
 @app.get("/path", response_class=HTMLResponse)
 async def path_form(request: Request):
-    return templates.TemplateResponse("path.html", {"request": request})
+    return templates.TemplateResponse("path.html", {"request": request, "path": None})
 
 @app.post("/path", response_class=HTMLResponse)
-async def path_result(request: Request, start: str = Form(...), goal: str = Form(...)):
+async def find_path(request: Request, start: str = Form(...), goal: str = Form(...)):
     path = shortest_path(network.sn, start, goal)
     return templates.TemplateResponse("path.html", {
-        "request": request, "start": start, "goal": goal, "path": path
+        "request": request,
+        "path": path,
+        "network": network
     })
+
+@app.get("/leaderboard", response_class=HTMLResponse)
+async def leaderboard(request: Request):
+    top_students = topk_by_degree(network.sn, 10)
+    return templates.TemplateResponse("leaderboard.html", {
+        "request": request,
+        "top_students": top_students
+    })
+
+# Chạy generate_graph.py khi khởi động
+import subprocess
+import sys
+subprocess.run([sys.executable, "generate_graph.py"])

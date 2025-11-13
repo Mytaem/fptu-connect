@@ -1,19 +1,11 @@
-# generate_graph.py
-from pyvis.network import Network
+# generate_graph.py - Tạo đồ thị mạng
 import network
+import os
 
-net = Network(height="700px", width="100%", directed=False, bgcolor="#222222", font_color="white")
-
-nodes = list(network.sn.students.keys())[:300]
-for sid in nodes:
-    info = network.sn.students[sid]
-    color = {"IT": "#ff4444", "BA": "#3366cc", "Design": "#00C851", "English": "#ffbb33"}.get(info["faculty"], "#777777")
-    net.add_node(sid, label=info["name"], title=f"{info['faculty']} • {info['hometown']}", color=color)
-
-for u in nodes:
-    for v in network.sn.friends_of(u):
-        if v in nodes:
-            net.add_edge(u, v)
-
-net.show("static/graph.html")
-print("Đã tạo đồ thị: static/graph.html")
+if __name__ == "__main__":
+    print("Đang tạo đồ thị mạng...")
+    network.generate_graph()
+    print("Hoàn thành! Đã tạo static/graph.html")
+    
+    # Tạo thư mục nếu chưa có
+    os.makedirs("static", exist_ok=True)
