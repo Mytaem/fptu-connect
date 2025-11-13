@@ -1,0 +1,16 @@
+{
+  "w1_0001": {
+    "name": "Nguyễn Văn A",
+    "avatar": "static/default.jpg",
+    "friends": [
+      "w1_0002"
+    ]
+  },
+  "w1_0002": {
+    "name": "Trần Thị B",
+    "avatar": "static/default.jpg",
+    "friends": [
+      "w1_0001"
+    ]
+  }
+}

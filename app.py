@@ -3,7 +3,7 @@ from fastapi import FastAPI, Request, Form, File, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-import network  # <-- Đảm bảo import này
+import network
 from src.src_w2.net_stats_w2 import compute_stats
 from src.src_w3.path_w3 import shortest_path
 from src.src_w4.topk_w4 import topk_by_degree
@@ -15,8 +15,9 @@ app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-# Tạo thư mục uploads nếu chưa có
+# Tạo thư mục
 os.makedirs("static/uploads", exist_ok=True)
+os.makedirs("data", exist_ok=True)
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
@@ -40,31 +41,28 @@ async def add_form(request: Request):
 
 @app.post("/add")
 async def add_student(
-    request: Request,
     name: str = Form(...),
     sid: str = Form(...),
     avatar: UploadFile = File(None)
 ):
-    # Xử lý ảnh
     avatar_path = "static/default.jpg"
     if avatar and avatar.filename:
         ext = os.path.splitext(avatar.filename)[1].lower()
         if ext in [".jpg", ".jpeg", ".png"]:
             filename = f"{uuid.uuid4()}{ext}"
             avatar_path = f"static/uploads/{filename}"
+            content = await avatar.read()
             with open(avatar_path, "wb") as f:
-                content = await avatar.read()
                 f.write(content)
-            # Resize ảnh
             try:
-                img = Image.open(avatar_path)
+                img = Image.open(avatar_path).convert("RGB")
                 img = img.resize((200, 200), Image.Resampling.LANCZOS)
-                img.save(avatar_path)
+                img.save(avatar_path, "JPEG", quality=85)
             except:
                 pass
 
-    # Thêm sinh viên
-    network.add_student(sid, name, avatar_path)
+    network.sn.add_student(sid, name, avatar_path)
+    network.generate_graph()  # Cập nhật đồ thị
     return RedirectResponse(f"/student/{sid}", status_code=303)
 
 @app.get("/path", response_class=HTMLResponse)
@@ -88,7 +86,6 @@ async def leaderboard(request: Request):
         "top_students": top_students
     })
 
-# Chạy generate_graph.py khi khởi động
-import subprocess
-import sys
-subprocess.run([sys.executable, "generate_graph.py"])
+# Tạo đồ thị lần đầu nếu chưa có
+if not os.path.exists("static/graph.html"):
+    network.generate_graph()
